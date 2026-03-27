@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor CabHub</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .card {
+            background: rgba(30, 41, 59, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            padding: 2.5rem 2rem;
+            max-width: 440px;
+            width: 90%;
+            text-align: center;
+        }
+
+        /* ── Pantalla de verificación ── */
+        .loader {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1.5rem;
+        }
+        @keyframes spin {
+            0%   { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* ── Pantalla de error ── */
+        .icon-error {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+        }
+        .badge-down {
+            display: inline-block;
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            color: #f87171;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding: 0.2rem 0.7rem;
+            border-radius: 999px;
+            margin-bottom: 1.2rem;
+        }
+        h1 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin-bottom: 0.6rem;
+        }
+        .subtitle {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            margin-bottom: 1.8rem;
+        }
+        .info-box {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 0.6rem;
+            padding: 1rem 1.2rem;
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-bottom: 1.8rem;
+            text-align: left;
+        }
+        .info-box span {
+            color: #94a3b8;
+        }
+        .btn-retry {
+            display: inline-block;
+            background: #3b82f6;
+            color: #fff;
+            font-weight: 700;
+            font-size: 0.9rem;
+            padding: 0.75rem 2rem;
+            border-radius: 0.6rem;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s;
+            text-decoration: none;
+        }
+        .btn-retry:hover { background: #2563eb; }
+
+        .notif-status {
+            margin-top: 1.2rem;
+            font-size: 0.75rem;
+            color: #475569;
+        }
+        .notif-status .ok  { color: #34d399; }
+        .notif-status .err { color: #f87171; }
+
+        /* ── Pantalla de verificación ── */
+        #screen-checking h2 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+        #screen-checking p {
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+
+        /* hidden util */
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+
+    <!-- ── Pantalla: verificando ── -->
+    <div id="screen-checking">
+        <div class="loader"></div>
+        <h2>Verificando servicio…</h2>
+        <p id="check-msg">Comprobando disponibilidad de CabHub.</p>
+    </div>
+
+    <!-- ── Pantalla: servicio caído ── -->
+    <div id="screen-down" class="hidden">
+        <div class="icon-error">⚠️</div>
+        <div class="badge-down">Servicio caído</div>
+        <h1>CabHub no disponible</h1>
+        <p class="subtitle">
+            El servicio <strong>CabHub</strong> no está respondiendo correctamente
+            o su contenido ha cambiado. Se han enviado las alertas correspondientes.
+        </p>
+        <div class="info-box">
+            <div>🕐 Detectado: <span id="error-time">—</span></div>
+            <div style="margin-top:0.4rem">🔗 URL: <span>https://cabhub.edgeone.app/</span></div>
+        </div>
+        <button class="btn-retry" onclick="location.reload()">Reintentar ahora</button>
+        <div class="notif-status" id="notif-status"></div>
+    </div>
+
+</div>
+
+<script>
+    /* ──────────────────────────────────────────────
+       CONFIGURACIÓN
+    ────────────────────────────────────────────── */
+    const TARGET_URL      = "https://cabhub.edgeone.app/";
+    const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1487146109720727797/mdRFxKU7E9M0yCznc29Knxm3I6GluRRFa6QxAk_gCavLWCfhBeat1VN6EzRGXVcMingO";
+    const ALERT_EMAIL     = "cabhub.inc@gmail.com";
+
+    /* Fragmento clave del HTML de referencia que identifica de forma
+       inequívoca la página correcta. Se usan varias cadenas para mayor
+       robustez ante pequeñas variaciones de espacios o saltos de línea. */
+    const REFERENCE_SIGNATURES = [
+        'id="register-screen"',
+        'id="redirect-screen"',
+        'handleFirstVisit()',
+        'user_full_name',
+        'Acceder al Drive'
+    ];
+
+    /* ──────────────────────────────────────────────
+       UTILIDADES
+    ────────────────────────────────────────────── */
+    function getFormattedDate() {
+        return new Date().toLocaleString('es-ES', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+    }
+
+    function setCheckMsg(text) {
+        document.getElementById('check-msg').textContent = text;
+    }
+
+    /* ──────────────────────────────────────────────
+       NOTIFICACIONES
+    ────────────────────────────────────────────── */
+    async function notifyDiscord(dateStr) {
+        const body = {
+            embeds: [{
+                title: "🚨 CabHub — Servicio caído",
+                description: "La web **https://cabhub.edgeone.app/** no está respondiendo correctamente o su contenido ha cambiado.",
+                color: 0xef4444,
+                fields: [
+                    { name: "⏰ Fecha de detección", value: dateStr, inline: false },
+                    { name: "🔗 URL monitoreada",    value: TARGET_URL, inline: false },
+                    { name: "📧 Alerta enviada a",   value: ALERT_EMAIL, inline: false }
+                ],
+                footer: { text: "Monitor CabHub — alerta automática" }
+            }]
+        };
+        const res = await fetch(DISCORD_WEBHOOK, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+        return res.ok;
+    }
+
+    /* Envío de correo mediante mailto: (abre el cliente de correo del usuario).
+       Para envío silencioso en segundo plano se necesitaría un backend;
+       como alternativa se abre el cliente de correo predeterminado. */
+    function notifyEmail(dateStr) {
+        const subject = encodeURIComponent("🚨 CabHub — Servicio caído");
+        const body    = encodeURIComponent(
+            `Alerta automática del Monitor CabHub\n\n` +
+            `La web ${TARGET_URL} no está respondiendo correctamente o su contenido ha cambiado.\n\n` +
+            `Fecha de detección: ${dateStr}\n\n` +
+            `Por favor, revisa el estado del servicio lo antes posible.`
+        );
+        /* Abre el cliente de correo del sistema con los datos pre-rellenados */
+        window.open(`mailto:${ALERT_EMAIL}?subject=${subject}&body=${body}`, '_blank');
+    }
+
+    /* ──────────────────────────────────────────────
+       VERIFICACIÓN PRINCIPAL
+    ────────────────────────────────────────────── */
+    async function checkService() {
+        setCheckMsg("Conectando con CabHub…");
+
+        let html = null;
+        let fetchOk = false;
+
+        try {
+            /* Se usa un proxy CORS público para poder leer el HTML desde el
+               navegador sin restricciones de Same-Origin Policy */
+            const PROXY = "https://api.allorigins.win/get?url=";
+            const res   = await fetch(PROXY + encodeURIComponent(TARGET_URL), { cache: "no-store" });
+
+            if (res.ok) {
+                const data = await res.json();
+                html    = data.contents || "";
+                fetchOk = true;
+            }
+        } catch (e) {
+            console.warn("Error al obtener la página:", e);
+        }
+
+        setCheckMsg("Analizando contenido…");
+
+        /* Verificar que TODAS las firmas de referencia estén presentes */
+        const isMatch = fetchOk && REFERENCE_SIGNATURES.every(sig => html.includes(sig));
+
+        if (isMatch) {
+            /* ✅ El servicio está activo y el HTML coincide → redirigir */
+            setCheckMsg("Servicio activo. Redirigiendo…");
+            setTimeout(() => { window.location.href = TARGET_URL; }, 800);
+        } else {
+            /* ❌ Servicio caído o contenido distinto → mostrar alerta */
+            const dateStr = getFormattedDate();
+
+            document.getElementById('screen-checking').classList.add('hidden');
+            document.getElementById('screen-down').classList.remove('hidden');
+            document.getElementById('error-time').textContent = dateStr;
+
+            /* Enviar notificaciones */
+            const statusEl = document.getElementById('notif-status');
+            statusEl.innerHTML = "Enviando alertas…";
+
+            let discordOk = false;
+            try {
+                discordOk = await notifyDiscord(dateStr);
+            } catch(e) {
+                console.error("Discord webhook error:", e);
+            }
+
+            /* Abrir cliente de correo */
+            notifyEmail(dateStr);
+
+            statusEl.innerHTML =
+                `Webhook Discord: <span class="${discordOk ? 'ok' : 'err'}">${discordOk ? '✓ enviado' : '✗ error'}</span>` +
+                ` &nbsp;|&nbsp; Correo: <span class="ok">✓ abierto</span>`;
+        }
+    }
+
+    /* Arrancar al cargar la página */
+    window.addEventListener('load', checkService);
+</script>
+</body>
+</html>
